@@ -29,14 +29,21 @@ export default function PairPage() {
 
       setUser(currentUser)
 
-      // Check if already paired
+      // Check if already fully paired
       const couple = await getCouple(currentUser.id)
-      if (couple) {
+      if (couple && couple.user2_id) {
         router.push('/')
         return
       }
 
-      // Generate invite code
+      // If couple exists but not fully paired, show existing invite code
+      if (couple && !couple.user2_id) {
+        setInviteCode(couple.invite_code)
+        setLoading(false)
+        return
+      }
+
+      // No couple yet, create one and generate invite code
       const code = await createCouple(currentUser.id)
       setInviteCode(code)
     } catch (err) {
@@ -83,19 +90,11 @@ export default function PairPage() {
               配对你们的情侣关系
             </h1>
             <p className="text-primary-dark/60">
-              邀请你的另一半加入，或输入对方的邀请码
+              分享你的邀请码给对方，或输入对方的邀请码
             </p>
           </div>
           <div className="bg-primary-dark/5 rounded-2xl p-8">
             <InviteCode code={inviteCode} onJoin={handleJoin} />
-          </div>
-          <div className="text-center mt-6">
-            <button
-              onClick={() => router.push('/')}
-              className="text-sm text-primary-dark/40 hover:text-primary-dark/60"
-            >
-              跳过，稍后配对
-            </button>
           </div>
         </div>
       </div>
