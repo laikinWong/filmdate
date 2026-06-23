@@ -8,6 +8,7 @@ const navItems = [
   { href: '/challenge', label: '今日挑战', icon: '🎬' },
   { href: '/editor', label: '拼贴编辑', icon: '🎨' },
   { href: '/achievements', label: '成就', icon: '🏆' },
+  { href: '/profile', label: '我的', icon: '👤' },
 ]
 
 export default function Navigation() {
