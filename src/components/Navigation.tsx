@@ -6,9 +6,9 @@ import { usePathname } from 'next/navigation'
 const navItems = [
   { href: '/', label: '回忆墙', icon: '📸' },
   { href: '/challenge', label: '今日挑战', icon: '🎬' },
-  { href: '/editor', label: '拼贴编辑', icon: '🎨' },
+  { href: '/games', label: 'PK', icon: '🎮' },
+  { href: '/editor', label: '拼贴', icon: '🎨' },
   { href: '/achievements', label: '成就', icon: '🏆' },
-  { href: '/profile', label: '我的', icon: '👤' },
 ]
 
 export default function Navigation() {

@@ -1,0 +1,10 @@
+DROP POLICY IF EXISTS "Themes viewable by everyone" ON public.themes;
+CREATE POLICY "Themes viewable by everyone" ON public.themes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Challenges viewable by everyone" ON public.daily_challenges;
+CREATE POLICY "Challenges viewable by everyone" ON public.daily_challenges FOR SELECT USING (true);
+DROP POLICY IF EXISTS "System can create challenges" ON public.daily_challenges;
+CREATE POLICY "Anyone can create challenges" ON public.daily_challenges FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can view partner profile" ON public.users;
+CREATE POLICY "Users can view partner profile" ON public.users FOR SELECT USING (auth.uid() = id OR EXISTS (SELECT 1 FROM public.couples c WHERE (c.user1_id = auth.uid() AND c.user2_id = id) OR (c.user2_id = auth.uid() AND c.user1_id = id)));
+DROP POLICY IF EXISTS "Responses viewable by participants" ON public.challenge_responses;
+CREATE POLICY "Responses viewable by authenticated users" ON public.challenge_responses FOR SELECT USING (auth.uid() IS NOT NULL);
