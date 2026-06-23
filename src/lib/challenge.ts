@@ -78,10 +78,10 @@ export async function submitResponse(
   return data
 }
 
-export async function uploadPhoto(file: File, userId: string): Promise<string> {
+export async function uploadPhoto(file: File | Blob, userId: string): Promise<string> {
   const supabase = createBrowserClient()
   
-  const fileName = `${userId}/${Date.now()}-${file.name}`
+  const fileName = `${userId}/${Date.now()}-${file instanceof File ? file.name : 'photo.jpg'}`
   
   const { data, error } = await supabase.storage
     .from('photos')
