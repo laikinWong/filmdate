@@ -9,8 +9,67 @@ export async function generateInviteCode(): Promise<string> {
   return code
 }
 
+export async function getMyCouple(userId: string) {
+  const supabase = createBrowserClient()
+
+  const { data: user } = await supabase
+    .from('users')
+    .select('couple_id')
+    .eq('id', userId)
+    .single()
+
+  if (!user?.couple_id) return null
+
+  const { data: couple } = await supabase
+    .from('couples')
+    .select('*')
+    .eq('id', user.couple_id)
+    .single()
+
+  if (!couple) return null
+
+  // Verify this user is actually in this couple
+  if (couple.user1_id !== userId && couple.user2_id !== userId) {
+    return null
+  }
+
+  return couple
+}
+
+export async function getMyInviteCode(userId: string): Promise<string | null> {
+  const supabase = createBrowserClient()
+
+  const { data: couple } = await supabase
+    .from('couples')
+    .select('invite_code')
+    .eq('user1_id', userId)
+    .is('user2_id', null)
+    .maybeSingle()
+
+  return couple?.invite_code || null
+}
+
 export async function createCouple(userId: string): Promise<string> {
   const supabase = createBrowserClient()
+
+  // Check if user already has an incomplete couple (as user1)
+  const { data: existingCouple } = await supabase
+    .from('couples')
+    .select('id, invite_code')
+    .eq('user1_id', userId)
+    .is('user2_id', null)
+    .maybeSingle()
+
+  if (existingCouple) {
+    // Update user's couple_id to this existing couple
+    await supabase
+      .from('users')
+      .update({ couple_id: existingCouple.id })
+      .eq('id', userId)
+    return existingCouple.invite_code
+  }
+
+  // Create new couple
   const inviteCode = await generateInviteCode()
 
   const { data, error } = await supabase
@@ -41,7 +100,7 @@ export async function joinCouple(userId: string, inviteCode: string) {
     .from('couples')
     .select()
     .eq('invite_code', inviteCode)
-    .single()
+    .maybeSingle()
 
   if (findError || !couple) {
     throw new Error('邀请码无效')
@@ -55,7 +114,14 @@ export async function joinCouple(userId: string, inviteCode: string) {
     throw new Error('不能加入自己创建的情侣关系')
   }
 
-  // Update couple with second user
+  // Step 1: Delete any existing incomplete couples where this user is user1
+  await supabase
+    .from('couples')
+    .delete()
+    .eq('user1_id', userId)
+    .is('user2_id', null)
+
+  // Step 2: Update couple with second user
   const { error: updateError } = await supabase
     .from('couples')
     .update({ user2_id: userId })
@@ -63,7 +129,7 @@ export async function joinCouple(userId: string, inviteCode: string) {
 
   if (updateError) throw updateError
 
-  // Update user's couple_id
+  // Step 3: Update user's couple_id
   await supabase
     .from('users')
     .update({ couple_id: couple.id })
@@ -73,33 +139,16 @@ export async function joinCouple(userId: string, inviteCode: string) {
 }
 
 export async function getCouple(userId: string) {
-  const supabase = createBrowserClient()
-
-  const { data: user } = await supabase
-    .from('users')
-    .select('couple_id')
-    .eq('id', userId)
-    .single()
-
-  if (!user?.couple_id) return null
-
-  const { data: couple } = await supabase
-    .from('couples')
-    .select('*')
-    .eq('id', user.couple_id)
-    .single()
-
-  return couple
+  return getMyCouple(userId)
 }
 
 export async function getPartner(userId: string) {
-  const supabase = createBrowserClient()
-
-  const couple = await getCouple(userId)
-  if (!couple) return null
+  const couple = await getMyCouple(userId)
+  if (!couple || !couple.user2_id) return null
 
   const partnerId = couple.user1_id === userId ? couple.user2_id : couple.user1_id
 
+  const supabase = createBrowserClient()
   const { data: partner } = await supabase
     .from('users')
     .select('id, name, avatar_url')

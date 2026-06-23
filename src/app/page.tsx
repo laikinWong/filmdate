@@ -41,18 +41,12 @@ export default function Home() {
       setUser(currentUser)
 
       const coupleData = await getCouple(currentUser.id)
-      if (!coupleData) {
+      if (!coupleData || !coupleData.user2_id) {
         router.push('/pair')
         return
       }
 
       setCouple(coupleData)
-
-      // If couple exists but not fully paired, redirect to pair page
-      if (!coupleData.user2_id) {
-        router.push('/pair')
-        return
-      }
 
       // Load timeline items
       const supabase = createBrowserClient()

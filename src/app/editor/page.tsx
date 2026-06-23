@@ -30,7 +30,7 @@ export default function EditorPage() {
       }
 
       const couple = await getCouple(user.id)
-      if (!couple) {
+      if (!couple || !couple.user2_id) {
         router.push('/pair')
         return
       }
