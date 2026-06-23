@@ -7,8 +7,10 @@ import ChallengeCard from '@/components/ChallengeCard'
 import PhotoUpload from '@/components/PhotoUpload'
 import FilterSelector from '@/components/FilterSelector'
 import LoadingScreen from '@/components/LoadingScreen'
+import AchievementPopup from '@/components/AchievementPopup'
 import { getTodayChallenge, getChallengeResponses, submitResponse, uploadPhoto } from '@/lib/challenge'
 import { getCurrentUser } from '@/lib/auth'
+import { checkAndUnlockAchievements } from '@/lib/achievements'
 
 export default function ChallengePage() {
   const router = useRouter()
@@ -20,6 +22,7 @@ export default function ChallengePage() {
   const [submitting, setSubmitting] = useState(false)
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [error, setError] = useState('')
+  const [newAchievement, setNewAchievement] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -57,6 +60,13 @@ export default function ChallengePage() {
     try {
       const photoUrl = await uploadPhoto(filteredBlob, user.id)
       await submitResponse(challenge.id, user.id, photoUrl, undefined, selectedFilter)
+      
+      // Check for new achievements
+      const newAchievements = await checkAndUnlockAchievements(user.id)
+      if (newAchievements.length > 0) {
+        setNewAchievement(newAchievements[0])
+      }
+      
       await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : '提交失败')
@@ -155,6 +165,14 @@ export default function ChallengePage() {
           </div>
         )}
       </div>
+
+      {/* Achievement Popup */}
+      {newAchievement && (
+        <AchievementPopup
+          achievementType={newAchievement}
+          onClose={() => setNewAchievement(null)}
+        />
+      )}
     </Layout>
   )
 }
