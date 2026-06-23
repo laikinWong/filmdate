@@ -102,7 +102,10 @@ export async function joinCouple(userId: string, inviteCode: string) {
     .eq('invite_code', inviteCode)
     .maybeSingle()
 
-  if (findError || !couple) {
+  if (findError) {
+    throw new Error('查询邀请码失败: ' + findError.message)
+  }
+  if (!couple) {
     throw new Error('邀请码无效')
   }
 
@@ -115,11 +118,16 @@ export async function joinCouple(userId: string, inviteCode: string) {
   }
 
   // Step 1: Delete any existing incomplete couples where this user is user1
-  await supabase
+  const { error: deleteError } = await supabase
     .from('couples')
     .delete()
     .eq('user1_id', userId)
     .is('user2_id', null)
+
+  if (deleteError) {
+    // Don't throw, might just not have any to delete
+    console.warn('Delete old couple failed:', deleteError.message)
+  }
 
   // Step 2: Update couple with second user
   const { error: updateError } = await supabase
@@ -127,13 +135,19 @@ export async function joinCouple(userId: string, inviteCode: string) {
     .update({ user2_id: userId })
     .eq('id', couple.id)
 
-  if (updateError) throw updateError
+  if (updateError) {
+    throw new Error('加入情侣失败: ' + updateError.message)
+  }
 
   // Step 3: Update user's couple_id
-  await supabase
+  const { error: userUpdateError } = await supabase
     .from('users')
     .update({ couple_id: couple.id })
     .eq('id', userId)
+
+  if (userUpdateError) {
+    throw new Error('更新用户信息失败: ' + userUpdateError.message)
+  }
 
   return couple
 }
