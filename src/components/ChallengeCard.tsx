@@ -55,7 +55,7 @@ export default function ChallengeCard({ theme, category, responses, onComplete }
             </div>
             <div className="mt-2 text-center">
               <p className="text-sm font-medium text-primary-dark">
-                {response.users.name}
+                {response.users?.name || '匿名用户'}
               </p>
               {response.caption && (
                 <p className="text-xs text-primary-dark/60 mt-1 line-clamp-2">
