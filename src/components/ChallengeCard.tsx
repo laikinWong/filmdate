@@ -5,11 +5,11 @@ import Image from 'next/image'
 interface ChallengeResponse {
   id: string
   photo_url: string
-  caption?: string
-  users: {
+  caption?: string | null
+  users?: {
     name: string
-    avatar_url?: string
-  }
+    avatar_url?: string | null
+  } | null
 }
 
 interface ChallengeCardProps {
@@ -43,7 +43,7 @@ export default function ChallengeCard({ theme, category, responses, onComplete }
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        {responses.map((response, index) => (
+        {responses.map((response) => (
           <div key={response.id} className="relative group">
             <div className="aspect-square relative rounded-lg overflow-hidden border-4 border-primary-dark/10 shadow-lg">
               <Image

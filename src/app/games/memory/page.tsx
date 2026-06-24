@@ -5,7 +5,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import { getCurrentUser } from '@/lib/auth'
-import { getGameByRoomCode, createGame, joinGame, subscribeToGame, updateGameState, finishGame } from '@/lib/games'
+import { getGameByRoomCode, createGame, joinGame, updateGameState, finishGame } from '@/lib/games'
+import type { GameRecord, UserProfile } from '@/lib/types'
 
 const EMOJIS = ['🎬', '📸', '🎨', '🎵', '🌸', '🌙', '⭐', '🔥']
 
@@ -15,6 +16,14 @@ interface Card {
   isFlipped: boolean
   isMatched: boolean
 }
+
+type MemoryGameState = Record<string, unknown> & {
+  board?: Card[]
+  scores?: number[]
+  currentTurn?: 'player1' | 'player2'
+}
+
+type MemoryGame = GameRecord<MemoryGameState>
 
 export default function MemoryGamePageWrapper() {
   return (
@@ -29,8 +38,8 @@ function MemoryGamePage() {
   const searchParams = useSearchParams()
   const roomCode = searchParams.get('room')
 
-  const [user, setUser] = useState<any>(null)
-  const [game, setGame] = useState<any>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [game, setGame] = useState<MemoryGame | null>(null)
   const [board, setBoard] = useState<Card[]>([])
   const [flippedIndices, setFlippedIndices] = useState<number[]>([])
   const [scores, setScores] = useState([0, 0])
@@ -42,38 +51,7 @@ function MemoryGamePage() {
   const isMyTurn = (currentTurn === 'player1' && isPlayer1) || (currentTurn === 'player2' && !isPlayer1)
   const myIndex = isPlayer1 ? 0 : 1
 
-  useEffect(() => {
-    init()
-    return () => {}
-  }, [])
-
-  const init = async () => {
-    const currentUser = await getCurrentUser()
-    if (!currentUser) { router.push('/auth/login'); return }
-    setUser(currentUser)
-
-    if (roomCode) {
-      const existingGame = await getGameByRoomCode(roomCode)
-      if (existingGame) {
-        if (!existingGame.player2_id && existingGame.player1_id !== currentUser.id) {
-          const joined = await joinGame(currentUser.id, roomCode)
-          setGame(joined)
-          initBoard(joined)
-        } else {
-          setGame(existingGame)
-          if (existingGame.game_state?.board?.length > 0) {
-            setBoard(existingGame.game_state.board)
-            setScores(existingGame.game_state.scores || [0, 0])
-            setCurrentTurn(existingGame.game_state.currentTurn || 'player1')
-          } else {
-            initBoard(existingGame)
-          }
-        }
-      }
-    }
-  }
-
-  const initBoard = (gameData: any) => {
+  const initBoard = useCallback((gameData: MemoryGame) => {
     const pairs = [...EMOJIS, ...EMOJIS]
     const shuffled = pairs.sort(() => Math.random() - 0.5)
     const cards = shuffled.map((emoji, i) => ({
@@ -86,15 +64,46 @@ function MemoryGamePage() {
     if (gameData) {
       updateGameState(gameData.id, { board: cards, scores: [0, 0], currentTurn: 'player1' })
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const init = async () => {
+      const currentUser = await getCurrentUser()
+      if (!currentUser) { router.push('/auth/login'); return }
+      setUser(currentUser)
+
+      if (roomCode) {
+        const existingGame = await getGameByRoomCode(roomCode) as MemoryGame | null
+        if (existingGame) {
+          if (!existingGame.player2_id && existingGame.player1_id !== currentUser.id) {
+            const joined = await joinGame(currentUser.id, roomCode) as MemoryGame
+            setGame(joined)
+            initBoard(joined)
+          } else {
+            setGame(existingGame)
+            if (existingGame.game_state?.board?.length) {
+              setBoard(existingGame.game_state.board)
+              setScores(existingGame.game_state.scores || [0, 0])
+              setCurrentTurn(existingGame.game_state.currentTurn || 'player1')
+            } else {
+              initBoard(existingGame)
+            }
+          }
+        }
+      }
+    }
+
+    init()
+  }, [initBoard, roomCode, router])
 
   const handleCardClick = (index: number) => {
     if (!isMyTurn || !game) return
     if (board[index].isFlipped || board[index].isMatched) return
     if (flippedIndices.length >= 2) return
 
-    const newBoard = [...board]
-    newBoard[index].isFlipped = true
+    const newBoard = board.map((card, cardIndex) => (
+      cardIndex === index ? { ...card, isFlipped: true } : card
+    ))
     setBoard(newBoard)
     const newFlipped = [...flippedIndices, index]
     setFlippedIndices(newFlipped)
@@ -102,34 +111,33 @@ function MemoryGamePage() {
     if (newFlipped.length === 2) {
       const [first, second] = newFlipped
       if (newBoard[first].emoji === newBoard[second].emoji) {
-        // Match!
-        newBoard[first].isMatched = true
-        newBoard[second].isMatched = true
+        const matchedBoard = newBoard.map((card, cardIndex) => (
+          cardIndex === first || cardIndex === second ? { ...card, isMatched: true } : card
+        ))
         const newScores = [...scores]
         newScores[myIndex]++
         setScores(newScores)
-        setBoard(newBoard)
+        setBoard(matchedBoard)
         setFlippedIndices([])
 
-        // Check if game over
-        const totalMatched = newBoard.filter(c => c.isMatched).length
-        if (totalMatched === newBoard.length) {
+        const totalMatched = matchedBoard.filter(c => c.isMatched).length
+        if (totalMatched === matchedBoard.length) {
           setGameOver(true)
           const winnerId = newScores[0] > newScores[1] ? game.player1_id : game.player2_id
           if (winnerId) finishGame(game.id, winnerId)
         }
 
-        updateGameState(game.id, { board: newBoard, scores: newScores, currentTurn })
+        updateGameState(game.id, { board: matchedBoard, scores: newScores, currentTurn })
       } else {
-        // No match, flip back
         setTimeout(() => {
-          newBoard[first].isFlipped = false
-          newBoard[second].isFlipped = false
-          setBoard([...newBoard])
+          const resetBoard = newBoard.map((card, cardIndex) => (
+            cardIndex === first || cardIndex === second ? { ...card, isFlipped: false } : card
+          ))
+          setBoard(resetBoard)
           setFlippedIndices([])
           const nextTurn = currentTurn === 'player1' ? 'player2' : 'player1'
           setCurrentTurn(nextTurn)
-          updateGameState(game.id, { board: newBoard, scores, currentTurn: nextTurn })
+          updateGameState(game.id, { board: resetBoard, scores, currentTurn: nextTurn })
         }, 1000)
       }
     }
@@ -138,7 +146,7 @@ function MemoryGamePage() {
   const handleCreateRoom = async () => {
     const currentUser = await getCurrentUser()
     if (!currentUser) { router.push('/auth/login'); return }
-    const newGame = await createGame(currentUser.id, 'memory')
+    const newGame = await createGame(currentUser.id, 'memory') as MemoryGame
     setGame(newGame)
     initBoard(newGame)
     window.history.replaceState(null, '', `/games/memory?room=${newGame.room_code}`)
@@ -149,12 +157,12 @@ function MemoryGamePage() {
     const currentUser = await getCurrentUser()
     if (!currentUser) { router.push('/auth/login'); return }
     try {
-      const joined = await joinGame(currentUser.id, roomInput)
+      const joined = await joinGame(currentUser.id, roomInput) as MemoryGame
       setGame(joined)
       initBoard(joined)
       window.history.replaceState(null, '', `/games/memory?room=${joined.room_code}`)
-    } catch (err: any) {
-      alert(err.message)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '加入失败')
     }
   }
 

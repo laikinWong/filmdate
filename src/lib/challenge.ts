@@ -83,7 +83,7 @@ export async function uploadPhoto(file: File | Blob, userId: string): Promise<st
   
   const fileName = `${userId}/${Date.now()}-${file instanceof File ? file.name : 'photo.jpg'}`
   
-  const { data, error } = await supabase.storage
+  const { error } = await supabase.storage
     .from('photos')
     .upload(fileName, file)
 

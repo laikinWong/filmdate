@@ -6,10 +6,11 @@ import Layout from '@/components/Layout'
 import LoadingScreen from '@/components/LoadingScreen'
 import { getCurrentUser } from '@/lib/auth'
 import { getCouple, createCouple, joinCouple, getMyInviteCode } from '@/lib/couple'
+import type { UserProfile } from '@/lib/types'
 
 export default function PairPage() {
   const router = useRouter()
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [myInviteCode, setMyInviteCode] = useState('')
   const [inputCode, setInputCode] = useState('')
@@ -20,37 +21,35 @@ export default function PairPage() {
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose')
 
   useEffect(() => {
-    loadUser()
-  }, [])
+    const loadUser = async () => {
+      try {
+        const currentUser = await getCurrentUser()
+        if (!currentUser) {
+          router.push('/auth/login')
+          return
+        }
 
-  const loadUser = async () => {
-    try {
-      const currentUser = await getCurrentUser()
-      if (!currentUser) {
-        router.push('/auth/login')
-        return
+        setUser(currentUser)
+
+        const couple = await getCouple(currentUser.id)
+        if (couple && couple.user2_id) {
+          router.push('/')
+          return
+        }
+
+        const existingCode = await getMyInviteCode(currentUser.id)
+        if (existingCode) {
+          setMyInviteCode(existingCode)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '加载失败')
+      } finally {
+        setLoading(false)
       }
-
-      setUser(currentUser)
-
-      // Check if already fully paired
-      const couple = await getCouple(currentUser.id)
-      if (couple && couple.user2_id) {
-        router.push('/')
-        return
-      }
-
-      // Check if user already has an invite code
-      const existingCode = await getMyInviteCode(currentUser.id)
-      if (existingCode) {
-        setMyInviteCode(existingCode)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败')
-    } finally {
-      setLoading(false)
     }
-  }
+
+    loadUser()
+  }, [router])
 
   const handleCreateInviteCode = async () => {
     if (!user) return
@@ -86,7 +85,7 @@ export default function PairPage() {
       await navigator.clipboard.writeText(myInviteCode)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
+    } catch {
       // Fallback
       const textArea = document.createElement('textarea')
       textArea.value = myInviteCode

@@ -8,6 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen'
 import { getCurrentUser } from '@/lib/auth'
 import { getCouple } from '@/lib/couple'
 import { createBrowserClient } from '@/lib/supabase-browser'
+import type { ChallengeResponse } from '@/lib/types'
 
 interface TimelineItem {
   id: string
@@ -20,87 +21,11 @@ interface TimelineItem {
 
 export default function Home() {
   const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  const [couple, setCouple] = useState<any>(null)
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ totalPhotos: 0, streak: 0 })
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      const currentUser = await getCurrentUser()
-      if (!currentUser) {
-        router.push('/auth/login')
-        return
-      }
-
-      setUser(currentUser)
-
-      const coupleData = await getCouple(currentUser.id)
-      if (!coupleData || !coupleData.user2_id) {
-        router.push('/pair')
-        return
-      }
-
-      setCouple(coupleData)
-
-      // Load timeline items
-      const supabase = createBrowserClient()
-      
-      // Get challenge responses
-      const { data: challengeResponses } = await supabase
-        .from('challenge_responses')
-        .select('*, daily_challenges(*, themes(*))')
-        .or(`user_id.eq.${currentUser.id}`)
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      // Get collages
-      const { data: collages } = await supabase
-        .from('collages')
-        .select('*')
-        .eq('couple_id', coupleData.id)
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      // Combine and sort by date
-      const items: TimelineItem[] = [
-        ...(challengeResponses || []).map(r => ({
-          id: r.id,
-          photo_url: r.photo_url,
-          caption: r.caption,
-          created_at: r.created_at,
-          type: 'challenge' as const,
-          theme: r.daily_challenges?.themes?.content,
-        })),
-        ...(collages || []).map(c => ({
-          id: c.id,
-          photo_url: c.thumbnail_url || '',
-          caption: c.title,
-          created_at: c.created_at,
-          type: 'collage' as const,
-        })),
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-      setTimelineItems(items)
-
-      // Calculate stats
-      setStats({
-        totalPhotos: items.length,
-        streak: calculateStreak(challengeResponses || []),
-      })
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const calculateStreak = (responses: any[]) => {
+  const calculateStreak = (responses: ChallengeResponse[]) => {
     if (responses.length === 0) return 0
 
     let streak = 0
@@ -126,6 +51,71 @@ export default function Home() {
 
     return streak
   }
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const currentUser = await getCurrentUser()
+        if (!currentUser) {
+          router.push('/auth/login')
+          return
+        }
+
+        const coupleData = await getCouple(currentUser.id)
+        if (!coupleData || !coupleData.user2_id) {
+          router.push('/pair')
+          return
+        }
+
+        const supabase = createBrowserClient()
+
+        const { data: challengeResponses } = await supabase
+          .from('challenge_responses')
+          .select('*, daily_challenges(*, themes(*))')
+          .or(`user_id.eq.${currentUser.id}`)
+          .order('created_at', { ascending: false })
+          .limit(50)
+
+        const { data: collages } = await supabase
+          .from('collages')
+          .select('*')
+          .eq('couple_id', coupleData.id)
+          .order('created_at', { ascending: false })
+          .limit(50)
+
+        const responses = (challengeResponses || []) as ChallengeResponse[]
+        const items: TimelineItem[] = [
+          ...responses.map(r => ({
+            id: r.id,
+            photo_url: r.photo_url,
+            caption: r.caption || undefined,
+            created_at: r.created_at,
+            type: 'challenge' as const,
+            theme: r.daily_challenges?.themes?.content,
+          })),
+          ...(collages || []).map(c => ({
+            id: c.id,
+            photo_url: c.thumbnail_url || '',
+            caption: c.title,
+            created_at: c.created_at,
+            type: 'collage' as const,
+          })),
+        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+        setTimelineItems(items)
+        setStats({
+          totalPhotos: items.length,
+          streak: calculateStreak(responses),
+        })
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [router])
 
   if (loading) {
     return <LoadingScreen />

@@ -1,4 +1,5 @@
 import { createBrowserClient } from './supabase-browser'
+import type { RealtimePostgresChangesPayload } from '@supabase/realtime-js'
 
 export type GameType = 'reaction' | 'memory' | 'knowledge'
 
@@ -67,7 +68,7 @@ export async function getGameByRoomCode(roomCode: string) {
   return data
 }
 
-export async function updateGameState(gameId: string, state: any) {
+export async function updateGameState(gameId: string, state: Record<string, unknown>) {
   const supabase = createBrowserClient()
   const { error } = await supabase
     .from('games')
@@ -87,7 +88,10 @@ export async function finishGame(gameId: string, winnerId: string) {
   if (error) throw error
 }
 
-export function subscribeToGame(gameId: string, callback: (payload: any) => void) {
+export function subscribeToGame(
+  gameId: string,
+  callback: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void
+) {
   const supabase = createBrowserClient()
   return supabase
     .channel(`game:${gameId}`)

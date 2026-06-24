@@ -15,23 +15,23 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [authenticated, setAuthenticated] = useState(false)
 
   useEffect(() => {
-    checkAuth()
-  }, [])
-
-  const checkAuth = async () => {
-    try {
-      const user = await getCurrentUser()
-      if (!user) {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (!user) {
+          router.push('/auth/login')
+        } else {
+          setAuthenticated(true)
+        }
+      } catch {
         router.push('/auth/login')
-      } else {
-        setAuthenticated(true)
+      } finally {
+        setLoading(false)
       }
-    } catch (err) {
-      router.push('/auth/login')
-    } finally {
-      setLoading(false)
     }
-  }
+
+    checkAuth()
+  }, [router])
 
   if (loading) {
     return <LoadingScreen />

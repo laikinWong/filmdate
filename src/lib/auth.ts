@@ -1,4 +1,9 @@
 import { createBrowserClient } from './supabase-browser'
+import {
+  clearRememberedSession,
+  isRememberedSessionValid,
+  markSessionRememberedFor30Days,
+} from './session-retention'
 
 export async function signUp(email: string, password: string, name: string) {
   const supabase = createBrowserClient()
@@ -21,6 +26,8 @@ export async function signUp(email: string, password: string, name: string) {
 
   if (profileError) throw profileError
 
+  markSessionRememberedFor30Days()
+
   return user
 }
 
@@ -33,16 +40,27 @@ export async function signIn(email: string, password: string) {
   })
 
   if (error) throw error
+
+  markSessionRememberedFor30Days()
+
   return user
 }
 
 export async function signOut() {
+  clearRememberedSession()
+
   const supabase = createBrowserClient()
   await supabase.auth.signOut()
 }
 
 export async function getCurrentUser() {
   const supabase = createBrowserClient()
+
+  if (!isRememberedSessionValid()) {
+    clearRememberedSession()
+    await supabase.auth.signOut()
+    return null
+  }
   
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null

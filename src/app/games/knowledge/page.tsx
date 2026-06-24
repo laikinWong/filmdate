@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import { getCurrentUser } from '@/lib/auth'
 import { getGameByRoomCode, createGame, joinGame, updateGameState, finishGame } from '@/lib/games'
+import type { GameRecord, UserProfile } from '@/lib/types'
 
 const QUESTIONS = [
   '对方最喜欢的食物是什么？',
@@ -17,6 +18,19 @@ const QUESTIONS = [
   '对方最喜欢的颜色是？',
   '对方最常说的话是什么？',
 ]
+
+type KnowledgeAnswers = {
+  player1?: string
+  player2?: string
+}
+
+type KnowledgeGameState = Record<string, unknown> & {
+  currentQuestion?: number
+  answers?: KnowledgeAnswers
+  scores?: number[]
+}
+
+type KnowledgeGame = GameRecord<KnowledgeGameState>
 
 export default function KnowledgeGamePageWrapper() {
   return (
@@ -31,13 +45,12 @@ function KnowledgeGamePage() {
   const searchParams = useSearchParams()
   const roomCode = searchParams.get('room')
 
-  const [user, setUser] = useState<any>(null)
-  const [game, setGame] = useState<any>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [game, setGame] = useState<KnowledgeGame | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [myAnswer, setMyAnswer] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [opponentAnswer, setOpponentAnswer] = useState('')
-  const [opponentSubmitted, setOpponentSubmitted] = useState(false)
   const [scores, setScores] = useState([0, 0])
   const [phase, setPhase] = useState<'answering' | 'revealing' | 'finished'>('answering')
   const [roomInput, setRoomInput] = useState('')
@@ -46,38 +59,38 @@ function KnowledgeGamePage() {
   const myIndex = isPlayer1 ? 0 : 1
 
   useEffect(() => {
-    init()
-  }, [])
+    const init = async () => {
+      const currentUser = await getCurrentUser()
+      if (!currentUser) { router.push('/auth/login'); return }
+      setUser(currentUser)
 
-  const init = async () => {
-    const currentUser = await getCurrentUser()
-    if (!currentUser) { router.push('/auth/login'); return }
-    setUser(currentUser)
-
-    if (roomCode) {
-      const existingGame = await getGameByRoomCode(roomCode)
-      if (existingGame) {
-        if (!existingGame.player2_id && existingGame.player1_id !== currentUser.id) {
-          const joined = await joinGame(currentUser.id, roomCode)
-          setGame(joined)
-        } else {
-          setGame(existingGame)
-          const state = existingGame.game_state
-          if (state) {
-            setCurrentQuestion(state.currentQuestion || 0)
-            setScores(state.scores || [0, 0])
+      if (roomCode) {
+        const existingGame = await getGameByRoomCode(roomCode) as KnowledgeGame | null
+        if (existingGame) {
+          if (!existingGame.player2_id && existingGame.player1_id !== currentUser.id) {
+            const joined = await joinGame(currentUser.id, roomCode) as KnowledgeGame
+            setGame(joined)
+          } else {
+            setGame(existingGame)
+            const state = existingGame.game_state
+            if (state) {
+              setCurrentQuestion(state.currentQuestion || 0)
+              setScores(state.scores || [0, 0])
+            }
           }
         }
       }
     }
-  }
+
+    init()
+  }, [roomCode, router])
 
   const handleSubmit = async () => {
     if (!myAnswer.trim() || !game) return
     setSubmitted(true)
 
     const state = game.game_state || {}
-    const answers = state.answers || { player1: '', player2: '' }
+    const answers = { ...(state.answers || { player1: '', player2: '' }) }
     const key = isPlayer1 ? 'player1' : 'player2'
     answers[key] = myAnswer.trim()
 
@@ -88,34 +101,28 @@ function KnowledgeGamePage() {
     const otherKey = isPlayer1 ? 'player2' : 'player1'
     if (answers[otherKey]) {
       setOpponentAnswer(answers[otherKey])
-      setOpponentSubmitted(true)
       setPhase('revealing')
     }
   }
 
   // Poll for opponent answer
   useEffect(() => {
-    if (!game || submitted || phase !== 'answering') return
+    if (!game || phase !== 'answering') return
     const interval = setInterval(async () => {
-      const refreshed = await getGameByRoomCode(game.room_code)
+      const refreshed = await getGameByRoomCode(game.room_code) as KnowledgeGame | null
       if (refreshed) {
         const state = refreshed.game_state
         const otherKey = isPlayer1 ? 'player2' : 'player1'
         if (state?.answers?.[otherKey]) {
           setOpponentAnswer(state.answers[otherKey])
-          setOpponentSubmitted(true)
+          if (submitted) {
+            setPhase('revealing')
+          }
         }
       }
     }, 2000)
     return () => clearInterval(interval)
-  }, [game, submitted, phase])
-
-  // Check if both submitted
-  useEffect(() => {
-    if (submitted && opponentSubmitted && phase === 'answering') {
-      setPhase('revealing')
-    }
-  }, [submitted, opponentSubmitted, phase])
+  }, [game, isPlayer1, phase, submitted])
 
   const handleNextQuestion = () => {
     const newScores = [...scores]
@@ -139,7 +146,6 @@ function KnowledgeGamePage() {
       setMyAnswer('')
       setSubmitted(false)
       setOpponentAnswer('')
-      setOpponentSubmitted(false)
       setPhase('answering')
       setScores(newScores)
       if (game) {
@@ -151,7 +157,7 @@ function KnowledgeGamePage() {
   const handleCreateRoom = async () => {
     const currentUser = await getCurrentUser()
     if (!currentUser) { router.push('/auth/login'); return }
-    const newGame = await createGame(currentUser.id, 'knowledge')
+    const newGame = await createGame(currentUser.id, 'knowledge') as KnowledgeGame
     setGame(newGame)
     window.history.replaceState(null, '', `/games/knowledge?room=${newGame.room_code}`)
   }
@@ -161,11 +167,11 @@ function KnowledgeGamePage() {
     const currentUser = await getCurrentUser()
     if (!currentUser) { router.push('/auth/login'); return }
     try {
-      const joined = await joinGame(currentUser.id, roomInput)
+      const joined = await joinGame(currentUser.id, roomInput) as KnowledgeGame
       setGame(joined)
       window.history.replaceState(null, '', `/games/knowledge?room=${joined.room_code}`)
-    } catch (err: any) {
-      alert(err.message)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '加入失败')
     }
   }
 

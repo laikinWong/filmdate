@@ -8,49 +8,50 @@ import { getCurrentUser, signOut } from '@/lib/auth'
 import { getCouple, getPartner } from '@/lib/couple'
 import { getUserChallengeStats } from '@/lib/challenge'
 import { getUserAchievements, achievements } from '@/lib/achievements'
+import type { Couple, UserProfile } from '@/lib/types'
 
 export default function ProfilePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
-  const [partner, setPartner] = useState<any>(null)
-  const [couple, setCouple] = useState<any>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [partner, setPartner] = useState<UserProfile | null>(null)
+  const [couple, setCouple] = useState<Couple | null>(null)
   const [stats, setStats] = useState({ totalResponses: 0, streak: 0 })
   const [userAchievements, setUserAchievements] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    loadData()
-  }, [])
+    const loadData = async () => {
+      try {
+        const currentUser = await getCurrentUser()
+        if (!currentUser) {
+          router.push('/auth/login')
+          return
+        }
 
-  const loadData = async () => {
-    try {
-      const currentUser = await getCurrentUser()
-      if (!currentUser) {
-        router.push('/auth/login')
-        return
+        setUser(currentUser)
+
+        const coupleData = await getCouple(currentUser.id)
+        setCouple(coupleData)
+
+        if (coupleData) {
+          const partnerData = await getPartner(currentUser.id)
+          setPartner(partnerData)
+        }
+
+        const challengeStats = await getUserChallengeStats(currentUser.id)
+        setStats(challengeStats)
+
+        const userAchievementsData = await getUserAchievements(currentUser.id)
+        setUserAchievements(new Set(userAchievementsData.map(a => a.type)))
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
       }
-
-      setUser(currentUser)
-
-      const coupleData = await getCouple(currentUser.id)
-      setCouple(coupleData)
-
-      if (coupleData) {
-        const partnerData = await getPartner(currentUser.id)
-        setPartner(partnerData)
-      }
-
-      const challengeStats = await getUserChallengeStats(currentUser.id)
-      setStats(challengeStats)
-
-      const userAchievementsData = await getUserAchievements(currentUser.id)
-      setUserAchievements(new Set(userAchievementsData.map(a => a.type)))
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    loadData()
+  }, [router])
 
   const handleSignOut = async () => {
     try {

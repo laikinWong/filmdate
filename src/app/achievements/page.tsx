@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import LoadingScreen from '@/components/LoadingScreen'
 import { getCurrentUser } from '@/lib/auth'
-import { getUserAchievements, achievements, Achievement } from '@/lib/achievements'
+import { getUserAchievements, achievements } from '@/lib/achievements'
 
 export default function AchievementsPage() {
   const router = useRouter()
@@ -13,25 +13,25 @@ export default function AchievementsPage() {
   const [unlockedAchievements, setUnlockedAchievements] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    loadData()
-  }, [])
+    const loadData = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (!user) {
+          router.push('/auth/login')
+          return
+        }
 
-  const loadData = async () => {
-    try {
-      const user = await getCurrentUser()
-      if (!user) {
-        router.push('/auth/login')
-        return
+        const userAchievements = await getUserAchievements(user.id)
+        setUnlockedAchievements(new Set(userAchievements.map(a => a.type)))
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
       }
-
-      const userAchievements = await getUserAchievements(user.id)
-      setUnlockedAchievements(new Set(userAchievements.map(a => a.type)))
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    loadData()
+  }, [router])
 
   const categories = [
     { key: 'streak', label: '连续打卡', icon: '🔥' },

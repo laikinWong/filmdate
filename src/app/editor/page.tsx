@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
-import Canvas from '@/components/Editor/Canvas'
+import Canvas, { type CanvasControls } from '@/components/Editor/Canvas'
 import Toolbar from '@/components/Editor/Toolbar'
 import LoadingScreen from '@/components/LoadingScreen'
 import { getCurrentUser } from '@/lib/auth'
@@ -15,34 +15,34 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [title, setTitle] = useState('')
-  const canvasRef = useRef<any>(null)
+  const canvasRef = useRef<CanvasControls | null>(null)
 
   useEffect(() => {
-    checkAuth()
-  }, [])
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (!user) {
+          router.push('/auth/login')
+          return
+        }
 
-  const checkAuth = async () => {
-    try {
-      const user = await getCurrentUser()
-      if (!user) {
-        router.push('/auth/login')
-        return
+        const couple = await getCouple(user.id)
+        if (!couple || !couple.user2_id) {
+          router.push('/pair')
+          return
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
       }
-
-      const couple = await getCouple(user.id)
-      if (!couple || !couple.user2_id) {
-        router.push('/pair')
-        return
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
     }
-  }
 
-  const handleCanvasReady = (canvas: any) => {
-    canvasRef.current = canvas
+    checkAuth()
+  }, [router])
+
+  const handleCanvasReady = (controls: CanvasControls) => {
+    canvasRef.current = controls
   }
 
   const handleAddImage = () => {
@@ -119,7 +119,10 @@ export default function EditorPage() {
       const couple = await getCouple(user.id)
       if (!couple) return
 
-      const canvasData = canvasRef.current.getCanvas().toJSON()
+      const canvas = canvasRef.current.getCanvas()
+      if (!canvas) return
+
+      const canvasData = canvas.toJSON()
       const thumbnailUrl = canvasRef.current.exportImage()
 
       const supabase = createBrowserClient()

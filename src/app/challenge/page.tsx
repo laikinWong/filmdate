@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import ChallengeCard from '@/components/ChallengeCard'
@@ -11,12 +11,13 @@ import AchievementPopup from '@/components/AchievementPopup'
 import { getTodayChallenge, getChallengeResponses, submitResponse, uploadPhoto } from '@/lib/challenge'
 import { getCurrentUser } from '@/lib/auth'
 import { checkAndUnlockAchievements } from '@/lib/achievements'
+import type { ChallengeResponse, DailyChallenge, UserProfile } from '@/lib/types'
 
 export default function ChallengePage() {
   const router = useRouter()
-  const [challenge, setChallenge] = useState<any>(null)
-  const [responses, setResponses] = useState<any[]>([])
-  const [user, setUser] = useState<any>(null)
+  const [challenge, setChallenge] = useState<DailyChallenge | null>(null)
+  const [responses, setResponses] = useState<ChallengeResponse[]>([])
+  const [user, setUser] = useState<UserProfile | null>(null)
   const [selectedFilter, setSelectedFilter] = useState('kodak-portra')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -24,11 +25,7 @@ export default function ChallengePage() {
   const [error, setError] = useState('')
   const [newAchievement, setNewAchievement] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const currentUser = await getCurrentUser()
       if (!currentUser) {
@@ -51,7 +48,47 @@ export default function ChallengePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadInitialData = async () => {
+      try {
+        const currentUser = await getCurrentUser()
+        if (!currentUser) {
+          router.push('/auth/login')
+          return
+        }
+
+        const todayChallenge = await getTodayChallenge()
+        const challengeResponses = todayChallenge
+          ? await getChallengeResponses(todayChallenge.id)
+          : []
+
+        if (cancelled) return
+
+        setUser(currentUser)
+        setChallenge(todayChallenge)
+        setResponses(challengeResponses)
+        setHasSubmitted(challengeResponses.some(r => r.user_id === currentUser.id))
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : '加载失败')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadInitialData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
   const handlePhotoUpload = async (file: File, filteredBlob: Blob) => {
     if (!user || !challenge) return

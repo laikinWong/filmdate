@@ -1,4 +1,4 @@
-import { filters, getFilterById, applyFilter } from '@/lib/filters'
+import { filters, getFilterById } from '@/lib/filters'
 
 describe('Filters', () => {
   it('should have 8 filter presets', () => {

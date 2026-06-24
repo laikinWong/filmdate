@@ -1,4 +1,4 @@
-import { achievements, getAchievementById, getAchievementsByCategory } from '@/lib/achievements'
+import { achievements, getAchievementById, getAchievementsByCategory, type Achievement } from '@/lib/achievements'
 
 describe('Achievements', () => {
   it('should have 12 achievements', () => {
@@ -29,9 +29,9 @@ describe('Achievements', () => {
   })
 
   it('should have achievements in all categories', () => {
-    const categories = ['streak', 'photos', 'collage', 'special']
+    const categories: Achievement['category'][] = ['streak', 'photos', 'collage', 'special']
     categories.forEach(category => {
-      const categoryAchievements = getAchievementsByCategory(category as any)
+      const categoryAchievements = getAchievementsByCategory(category)
       expect(categoryAchievements.length).toBeGreaterThan(0)
     })
   })

@@ -1,12 +1,25 @@
 'use client'
 
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import * as fabric from 'fabric'
+
+type TextOptions = NonNullable<ConstructorParameters<typeof fabric.IText>[1]>
+
+export interface CanvasControls {
+  addImage: (url: string) => Promise<void>
+  addText: (text: string, options?: TextOptions) => void
+  addShape: (type: 'rect' | 'circle' | 'triangle') => void
+  deleteSelected: () => void
+  undo: () => void
+  clear: () => void
+  exportImage: () => string | null
+  getCanvas: () => fabric.Canvas | null
+}
 
 interface CanvasProps {
   width: number
   height: number
-  onCanvasReady?: (canvas: fabric.Canvas) => void
+  onCanvasReady?: (controls: CanvasControls) => void
 }
 
 export default function Canvas({ width, height, onCanvasReady }: CanvasProps) {
@@ -26,13 +39,12 @@ export default function Canvas({ width, height, onCanvasReady }: CanvasProps) {
 
     fabricRef.current = canvas
     setIsReady(true)
-    onCanvasReady?.(canvas)
 
     return () => {
       canvas.dispose()
       fabricRef.current = null
     }
-  }, [width, height, onCanvasReady])
+  }, [width, height])
 
   const addImage = useCallback(async (url: string) => {
     const canvas = fabricRef.current
@@ -64,7 +76,7 @@ export default function Canvas({ width, height, onCanvasReady }: CanvasProps) {
     }
   }, [])
 
-  const addText = useCallback((text: string, options?: Record<string, any>) => {
+  const addText = useCallback((text: string, options?: TextOptions) => {
     const canvas = fabricRef.current
     if (!canvas) return
 
@@ -185,21 +197,21 @@ export default function Canvas({ width, height, onCanvasReady }: CanvasProps) {
     return fabricRef.current
   }, [])
 
-  // Expose methods via ref
+  const controls = useMemo<CanvasControls>(() => ({
+    addImage,
+    addText,
+    addShape,
+    deleteSelected,
+    undo,
+    clear,
+    exportImage,
+    getCanvas,
+  }), [addImage, addText, addShape, deleteSelected, undo, clear, exportImage, getCanvas])
+
   useEffect(() => {
-    if (!canvasRef.current) return
-    
-    const canvasElement = canvasRef.current
-    const extendedCanvas = canvasElement as any
-    extendedCanvas.addImage = addImage
-    extendedCanvas.addText = addText
-    extendedCanvas.addShape = addShape
-    extendedCanvas.deleteSelected = deleteSelected
-    extendedCanvas.undo = undo
-    extendedCanvas.clear = clear
-    extendedCanvas.exportImage = exportImage
-    extendedCanvas.getCanvas = getCanvas
-  }, [addImage, addText, addShape, deleteSelected, undo, clear, exportImage, getCanvas])
+    if (!isReady) return
+    onCanvasReady?.(controls)
+  }, [controls, isReady, onCanvasReady])
 
   return (
     <div className="relative border-4 border-primary-dark/20 rounded-lg overflow-hidden shadow-xl">

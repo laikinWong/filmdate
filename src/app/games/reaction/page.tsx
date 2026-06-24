@@ -6,8 +6,16 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import { getCurrentUser } from '@/lib/auth'
 import { getGameByRoomCode, createGame, joinGame, subscribeToGame, updateGameState, finishGame } from '@/lib/games'
+import type { GameRecord, UserProfile } from '@/lib/types'
 
 type Phase = 'waiting' | 'countdown' | 'waitingGreen' | 'go' | 'clicked' | 'tooEarly' | 'roundResult' | 'gameOver'
+
+type ReactionGameState = Record<string, unknown> & {
+  scores?: number[]
+  round?: number
+}
+
+type ReactionGame = GameRecord<ReactionGameState>
 
 export default function ReactionGamePageWrapper() {
   return (
@@ -22,57 +30,31 @@ function ReactionGamePage() {
   const searchParams = useSearchParams()
   const roomCode = searchParams.get('room')
 
-  const [user, setUser] = useState<any>(null)
-  const [game, setGame] = useState<any>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [game, setGame] = useState<ReactionGame | null>(null)
   const [phase, setPhase] = useState<Phase>('waiting')
   const [round, setRound] = useState(1)
   const [scores, setScores] = useState([0, 0])
   const [myReactionTime, setMyReactionTime] = useState<number | null>(null)
   const [opponentReactionTime, setOpponentReactionTime] = useState<number | null>(null)
-  const [isMyTurn, setIsMyTurn] = useState(true)
+  const isMyTurn = true
   const [winner, setWinner] = useState<string | null>(null)
   const [roomInput, setRoomInput] = useState('')
 
   const startTimeRef = useRef(0)
-  const timeoutRef = useRef<any>(null)
-  const subRef = useRef<any>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const subRef = useRef<{ unsubscribe: () => void } | null>(null)
 
   const isPlayer1 = game?.player1_id === user?.id
   const myIndex = isPlayer1 ? 0 : 1
   const opponentIndex = isPlayer1 ? 1 : 0
 
-  useEffect(() => {
-    init()
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      if (subRef.current) subRef.current.unsubscribe()
-    }
-  }, [])
-
-  const init = async () => {
-    const currentUser = await getCurrentUser()
-    if (!currentUser) { router.push('/auth/login'); return }
-    setUser(currentUser)
-
-    if (roomCode) {
-      const existingGame = await getGameByRoomCode(roomCode)
-      if (existingGame) {
-        if (!existingGame.player2_id && existingGame.player1_id !== currentUser.id) {
-          const joined = await joinGame(currentUser.id, roomCode)
-          setGame(joined)
-        } else {
-          setGame(existingGame)
-        }
-        subscribe(existingGame.id)
-      }
-    }
-  }
-
   const subscribe = useCallback((gameId: string) => {
     subRef.current = subscribeToGame(gameId, (payload) => {
       if (payload.new) {
-        setGame(payload.new)
-        const state = payload.new.game_state
+        const nextGame = payload.new as ReactionGame
+        setGame(nextGame)
+        const state = nextGame.game_state
         if (state) {
           setScores(state.scores || [0, 0])
           setRound(state.round || 1)
@@ -81,10 +63,38 @@ function ReactionGamePage() {
     })
   }, [])
 
+  useEffect(() => {
+    const init = async () => {
+      const currentUser = await getCurrentUser()
+      if (!currentUser) { router.push('/auth/login'); return }
+      setUser(currentUser)
+
+      if (roomCode) {
+        const existingGame = await getGameByRoomCode(roomCode) as ReactionGame | null
+        if (existingGame) {
+          if (!existingGame.player2_id && existingGame.player1_id !== currentUser.id) {
+            const joined = await joinGame(currentUser.id, roomCode) as ReactionGame
+            setGame(joined)
+            subscribe(joined.id)
+          } else {
+            setGame(existingGame)
+            subscribe(existingGame.id)
+          }
+        }
+      }
+    }
+
+    init()
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (subRef.current) subRef.current.unsubscribe()
+    }
+  }, [roomCode, router, subscribe])
+
   const handleCreateRoom = async () => {
     const currentUser = await getCurrentUser()
     if (!currentUser) { router.push('/auth/login'); return }
-    const newGame = await createGame(currentUser.id, 'reaction')
+    const newGame = await createGame(currentUser.id, 'reaction') as ReactionGame
     setGame(newGame)
     subscribe(newGame.id)
     window.history.replaceState(null, '', `/games/reaction?room=${newGame.room_code}`)
@@ -95,12 +105,12 @@ function ReactionGamePage() {
     const currentUser = await getCurrentUser()
     if (!currentUser) { router.push('/auth/login'); return }
     try {
-      const joined = await joinGame(currentUser.id, roomInput)
+      const joined = await joinGame(currentUser.id, roomInput) as ReactionGame
       setGame(joined)
       subscribe(joined.id)
       window.history.replaceState(null, '', `/games/reaction?room=${joined.room_code}`)
-    } catch (err: any) {
-      alert(err.message)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '加入失败')
     }
   }
 
@@ -114,12 +124,12 @@ function ReactionGamePage() {
       const delay = 2000 + Math.random() * 4000
       timeoutRef.current = setTimeout(() => {
         setPhase('go')
-        startTimeRef.current = Date.now()
+        startTimeRef.current = performance.now()
       }, delay)
     }, 1000)
   }
 
-  const handleClick = () => {
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'waitingGreen') {
       // Too early!
       setPhase('tooEarly')
@@ -141,7 +151,7 @@ function ReactionGamePage() {
     }
 
     if (phase === 'go') {
-      const time = Date.now() - startTimeRef.current
+      const time = Math.max(0, Math.round(event.timeStamp - startTimeRef.current))
       setMyReactionTime(time)
       setPhase('clicked')
 

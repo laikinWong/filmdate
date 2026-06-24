@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { achievements, Achievement } from '@/lib/achievements'
+import { achievements } from '@/lib/achievements'
 
 interface AchievementPopupProps {
   achievementType: string
